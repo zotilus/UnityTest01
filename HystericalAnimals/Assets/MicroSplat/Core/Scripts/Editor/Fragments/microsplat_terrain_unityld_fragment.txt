@@ -1,0 +1,92 @@
+
+      struct SurfaceInputs
+      {
+         float3 ObjectSpaceNormal;
+         float3 TangentSpaceNormal;
+         float3 ObjectSpaceTangent;
+         float3 ObjectSpaceBiTangent;
+      };
+
+
+      half4 frag (SRPInput i) : SV_Target 
+      {
+         float3 WorldSpaceNormal = normalize(i.worldNormal);
+         float3 WorldSpaceTangent = i.tangent;
+         float3 WorldSpacePosition = i.worldPos;
+         float3 WorldSpaceBiTangent = i.binormal;
+         float3 WorldSpaceViewDirection = normalize(i.viewDir);
+         float3x3 tangentSpaceTransform = float3x3(WorldSpaceTangent,WorldSpaceBiTangent,WorldSpaceNormal);
+         float3 ObjectSpaceNormal = mul(WorldSpaceNormal,(float3x3)UNITY_MATRIX_M);
+         float3 TangentSpaceNormal = mul(WorldSpaceNormal,(float3x3)tangentSpaceTransform);
+         float3 ObjectSpaceTangent = mul((float3x3)UNITY_MATRIX_I_M,WorldSpaceTangent);
+         float3 ObjectSpaceBiTangent = mul((float3x3)UNITY_MATRIX_I_M,WorldSpaceBiTangent);
+
+
+         Input input = (Input)0;
+         input.worldPos = WorldSpacePosition;
+         input.worldNormal = WorldSpaceNormal;
+         input.viewDir = mul((float3x3)tangentSpaceTransform, WorldSpaceViewDirection);
+         input.uv_Control0 = i.uv_Control0;
+         #if _MICROMESH
+         input.uv2_Diffuse = i.uv2_Diffuse;
+         #endif
+         #if _TERRAINBLENDING || _VSSHADOWMAP || _WINDSHADOWS || _SNOWSHADOWS
+         input.color = i.color;
+         #endif
+         // INTERNAL DATA?
+
+
+         float3 worldNormalVertex = float3(0,1,0);
+         #if _SNOW || _TRIPLANAR || _STREAMS || _LAVA || _GLITTER || _SNOWGLITTER
+         worldNormalVertex = mul((float3x3)tangentSpaceTransform, float3(0,0,1));
+         #endif
+
+         MicroSplatLayer l = SurfImpl(input, worldNormalVertex);
+
+         SurfaceInputs surfaceInput = (SurfaceInputs)0;
+         surfaceInput.ObjectSpaceNormal = ObjectSpaceNormal;
+         surfaceInput.TangentSpaceNormal = TangentSpaceNormal;
+         surfaceInput.ObjectSpaceTangent = ObjectSpaceTangent;
+         surfaceInput.ObjectSpaceBiTangent = ObjectSpaceBiTangent;
+
+
+         InputData inputData;
+         inputData.positionWS = WorldSpacePosition;
+         inputData.normalWS = TangentToWorldNormal(l.Normal, WorldSpaceTangent, WorldSpaceBiTangent, WorldSpaceNormal);
+         inputData.viewDirectionWS = WorldSpaceViewDirection;
+         inputData.shadowCoord = i.shadowCoord;
+         inputData.fogCoord = i.fogFactorAndVertexLight.x;
+         inputData.vertexLighting = i.fogFactorAndVertexLight.yzw;
+         inputData.bakedGI = SAMPLE_GI(i.lightmapUV, i.vertexSH, inputData.normalWS);
+      
+         half4 color = LightweightFragmentPBR(inputData, l.Albedo, l.Metallic, 0, 
+               l.Smoothness, l.Occlusion, l.Emission, 1);
+      
+         // Computes fog factor per-vertex
+         ApplyFog(color.rgb, i.fogFactorAndVertexLight.x);
+
+
+         #if _DEBUG_OUTPUT_ALBEDO
+            color.rgb = l.Albedo.rgbr;
+         #elif _DEBUG_OUTPUT_NORMAL
+            color.rg = l.Normal * 0.5 + 0.5;
+            color.b = 1;
+         #elif _DEBUG_OUTPUT_SMOOTHNESS
+            color.rgb = l.Smoothness.xxx;
+         #elif _DEBUG_OUTPUT_METAL
+           c olor.rgb = l.Metallic.xxx;
+         #elif _DEBUG_OUTPUT_AO
+            color.rgb = l.Occlusion.xxx;
+         #elif _DEBUG_OUTPUT_EMISSION
+            color.rgb = l.Emission.rgb;
+         #elif _DEBUG_OUTPUT_HEIGHT
+            color.rgb = l.Height.xxx;
+         #endif
+
+         return color;
+      }
+
+      ENDHLSL
+   }
+
+   
