@@ -1,3 +1,3 @@
-# UnityTest01 (Hysterical Animals)
+# Hysterical Animals
 
 VR test 
